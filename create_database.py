@@ -59,69 +59,55 @@ def insert_data(conn):
     try:
         cursor = conn.cursor()
 
+        # Customers
         customers = [
             (1, 21),
             (2, 23),
-            (3, 35),
-            (4, 42),
-            (5, 29),
-            (6, 31)
+            (3, 35)
         ]
 
+        # Items
         items = [
             (1, "x"),
             (2, "y"),
             (3, "z")
         ]
 
+        # Sales transactions
         sales = [
-            (1, 1),
-            (2, 1),
-            (3, 2),
-            (4, 3),
-            (5, 4),
-            (6, 5),
-            (7, 6),
-            (8, 2),
-            (9, 3)
+            (1, 1),  # customer 1
+            (2, 1),  # customer 1
+            (3, 2),  # customer 2
+            (4, 3),  # customer 3
+            (5, 3)   # customer 3
         ]
 
+        # Orders (all items recorded per sale)
         orders = [
+            # Sale 1 (customer 1)
             (1, 1, 1, 5),
             (2, 1, 2, None),
             (3, 1, 3, None),
 
+            # Sale 2 (customer 1)
             (4, 2, 1, 5),
             (5, 2, 2, None),
             (6, 2, 3, None),
 
+            # Sale 3 (customer 2)
             (7, 3, 1, 1),
             (8, 3, 2, 1),
             (9, 3, 3, 1),
 
+            # Sale 4 (customer 3)
             (10, 4, 1, None),
             (11, 4, 2, None),
             (12, 4, 3, 1),
 
-            (13, 5, 1, 2),
+            # Sale 5 (customer 3)
+            (13, 5, 1, None),
             (14, 5, 2, None),
-            (15, 5, 3, None),
-
-            (16, 6, 1, 3),
-            (17, 6, 2, 2),
-            (18, 6, 3, None),
-
-            (19, 7, 1, None),
-            (20, 7, 2, 1),
-            (21, 7, 3, 4),
-
-            (22, 8, 1, 2),
-            (23, 8, 2, None),
-            (24, 8, 3, None),
-
-            (25, 9, 1, None),
-            (26, 9, 2, None),
-            (27, 9, 3, 1)
+            (15, 5, 3, 1)
         ]
 
         cursor.executemany(
@@ -140,20 +126,35 @@ def insert_data(conn):
         )
 
         cursor.executemany(
+            "INSERT INTO Orders (order_id, sales_id, item_id, quantity) VALUES (?, ?, ?, ?)",
+            orders
+        )
+
+        conn.commit()
+
+        cursor.executemany(
+            "INSERT INTO Items (item_id, item_name) VALUES (?, ?)",
+            items
+        )
+
+        cursor.executemany(
+            "INSERT INTO Sales (sales_id, customer_id) VALUES (?, ?)",
+            sales
+        )
+
+        cursor.executemany(
             """
             INSERT INTO Orders (order_id, sales_id, item_id, quantity)
             VALUES (?, ?, ?, ?)
             """,
             orders
         )
-
         conn.commit()
         logging.info("Sample data inserted successfully.")
 
     except sqlite3.Error as e:
         logging.error(f"Data insertion failed: {e}")
         raise
-
 
 def main():
     try:
