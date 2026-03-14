@@ -3,92 +3,74 @@ import pandas as pd
 import logging
 import os
 
-if not os.path.exists("output"):
-    os.makedirs("output")
-
 DB_PATH = "data/database.db"
 OUTPUT_PATH = "output/pandas_output.csv"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 
-def create_connection(db_path):
-    try:
-        conn = sqlite3.connect(db_path)
-        logging.info("Connected to database.")
-        return conn
-    except sqlite3.Error as e:
-        logging.error(f"Database connection failed: {e}")
-        raise
+def load_tables(conn):
+    customers = pd.read_sql("SELECT * FROM Customer", conn)
+    sales = pd.read_sql("SELECT * FROM Sales", conn)
+    orders = pd.read_sql("SELECT * FROM Orders", conn)
+    items = pd.read_sql("SELECT * FROM Items", conn)
 
-def extract_data(conn):
-    try:
-        query = """
-        SELECT
-            c.customer_id,
-            c.age,
-            i.item_name,
-            o.quantity
-        FROM Customer c
-        JOIN Sales s ON c.customer_id = s.customer_id
-        JOIN Orders o ON s.sales_id = o.sales_id
-        JOIN Items i ON o.item_id = i.item_id
-        WHERE c.age BETWEEN 18 AND 35
-        """
-        df = pd.read_sql_query(query, conn)
-        logging.info("Data extracted successflly.")
-        return df
-    except Exception as e:
-        logging.error(f"Data extraction failed: {e}")
-        raise
+    return customers, sales, orders, items
 
 
-def transform_data(df):
-    """
-    1. Ignore NULL quantities
-    2. Aggregate totals per customer/item
-    3. Remove zero totals
-    """
-    try:
-        df = df.dropna(subset=["quantity"]) #drop all rows with NULL quantity
+def transform_data(customers, sales, orders, items):
+    # Join Customer -> Sales
+    df = sales.merge(customers, on="customer_id")
 
-        df["quantity"] = df["quantity"].astype(int) # because no half of an item sold ;)
-        
-        #aggregate total quantity per customer/item combination
-        result = (df.groupby(["customer_id", "age", "item_name"], as_index=False).agg({"quantity": "sum"}))
+    # Join Sales -> Orders
+    df = df.merge(orders, on="sales_id")
 
-        result = result[result["quantity"] > 0] #filter on > 0
-        result = result.rename(columns={"customer_id": "Customer","age": "Age","item_name": "Item","quantity": "Quantity"})
-        result = result.sort_values(["Customer", "Item"])
+    # Join Orders -> Items
+    df = df.merge(items, on="item_id")
 
-        logging.info("Data transformation complete.")
-        return result
+    # Filter age range
+    df = df[(df["age"] >= 18) & (df["age"] <= 35)]
 
-    except Exception as e:
-        logging.error(f"Transformation failed: {e}")
-        raise
+    # Remove NULL quantities
+    df = df[df["quantity"].notna()]
 
-def export_csv(df, output_path):
-    try:
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        df.to_csv(output_path, sep=";",index=False) # use ; seperator
-        logging.info(f"CSV exported successfully to {output_path}")
-    except Exception as e:
-        logging.error(f"CSV export failed: {e}")
-        raise
+    # Aggregate quantities
+    result = (
+        df.groupby(["customer_id", "age", "item_name"], as_index=False)
+        .agg({"quantity": "sum"})
+    )
+
+    # Remove zero totals
+    result = result[result["quantity"] > 0]
+
+    # Rename columns to match example #doing this because I had to recreate DB
+    result = result.rename(columns={
+        "customer_id": "Customer",
+        "age": "Age",
+        "item_name": "Item",
+        "quantity": "Quantity"
+    })
+    # Ensure integer quantities, becuase : (The company doesn’t sell half of an item ;) )
+    result["Quantity"] = result["Quantity"].astype(int) 
+    # Sort output, matching order in example
+    result = result.sort_values(["Customer", "Item"])
+    return result
+
+
+def export_csv(df):
+    os.makedirs("output", exist_ok=True)
+    df.to_csv(OUTPUT_PATH,index=False,sep=";") #not sure if example meant to store query or query result as ; seperated, so doing both
+    logging.info(f"Output exported to {OUTPUT_PATH}")
 
 def main():
     try:
-        conn = create_connection(DB_PATH)
-        raw_data = extract_data(conn)
-        transformed = transform_data(raw_data)
-        export_csv(transformed, OUTPUT_PATH)
+        conn = sqlite3.connect(DB_PATH)
+        customers, sales, orders, items = load_tables(conn)
+        result = transform_data(customers, sales, orders, items)
+        export_csv(result)
         conn.close()
         logging.info("Pandas solution completed successfully.")
     except Exception as e:
-        logging.error(f"Process failed with error: {e}")
+        logging.error(f"Process failed: {e}")
 
 if __name__ == "__main__":
     main()
